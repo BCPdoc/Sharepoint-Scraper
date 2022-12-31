@@ -11,36 +11,6 @@ from tkinter import ttk
 import sys
 import configparser
 
-class NewSiteWindow(object):
-    def __init__(self,parent):
-        self.toplevel=tk.Toplevel(parent)
-        newsiteWindowSize='240x80'
-
-        self.toplevel.geometry(newsiteWindowSize)
-        self.toplevel.title('Add new site')
-
-        self.newsite=''
-
-        self.frame=tk.Frame(self.toplevel)
-        self.frame.pack(expand=True)
-
-        lblnewsite = ttk.Label(self.frame, text="Add this site:")
-        lblnewsite.grid(row=0, column=0, sticky="w")
-        self.txtNewsite = ttk.Entry(self.frame)
-        self.txtNewsite.grid(row=0, column=1, columnspan=4, sticky="w")
-        
-        def btnOK_click():
-            self.newsite = self.txtNewsite.get() 
-            self.toplevel.destroy()
-            
-        btnOK = ttk.Button(self.frame, text="OK", command=btnOK_click)
-        btnOK.grid(row=1, column=2, sticky='w')
-
-    def show(self):
-        self.toplevel.grab_set()
-        self.toplevel.wait_window()
-        return self.newsite
-        
 class MultiPromptWindow(object):
     def __init__(self, parent, title, data):
         self.toplevel=tk.Toplevel(parent)
@@ -72,62 +42,23 @@ class MultiPromptWindow(object):
             self.toplevel.destroy()
 
         btnOK = ttk.Button(self.frame, text="OK", command=btnOK_click)
-        btnOK.grid(row=self.count, column=2, columnspan=2, sticky='w')
+        btnOK.grid(row=self.count, column=1, columnspan=2, sticky='w')
 
     def show(self):
         self.toplevel.grab_set()
         self.toplevel.wait_window()
         return self.answers
 
-class CredentialWindow(object):
-    def __init__(self, parent, username, password):
-        #super().__init__(parent)
-        self.toplevel=tk.Toplevel(parent)
-        credentialWindowSize='240x80'
-
-        self.toplevel.geometry(credentialWindowSize)
-        self.toplevel.title('Provide credentials')
-
-        self.username=username #"Test user name"
-        self.password=password #''
-
-        self.frame=tk.Frame(self.toplevel)
-        self.frame.pack(expand=True)
-
-        lblusername = ttk.Label(self.frame, text="Username:")
-        lblusername.grid(row=0, column=0, sticky="w")
-        lblpassword = ttk.Label(self.frame, text="Password:")
-        lblpassword.grid(row=1, column=0, sticky="w")
-
-        self.txtUsername = ttk.Entry(self.frame)
-        self.txtUsername.insert(0, self.username)
-        self.txtUsername.grid(row=0, column=1, columnspan=2,sticky="w")
-
-        self.txtPassword = ttk.Entry(self.frame)
-        self.txtPassword.insert(0,self.password)
-        self.txtPassword.grid(row=1, column=1, columnspan=2, sticky="w")
-
-        def btnOK_click():
-            self.username = self.txtUsername.get() #self.varUsername.get()
-            self.password = self.txtPassword.get()
-            self.toplevel.destroy()
-
-        btnOK = ttk.Button(self.frame, text="OK", command=btnOK_click)
-        btnOK.grid(row=2, column=2, columnspan=2, sticky='w')
-
-    def show(self):
-        self.toplevel.grab_set()
-        self.toplevel.wait_window()
-        return self.username, self.password
-
 class ScraperConfig(configparser.ConfigParser):
     def __init__(self):
         super().__init__()
         self.configfilename='config.ini'
         self.sectionname='Credentials'
-        self.username='Username'
-        self.listname='List'
-        self.sitename='Sites'
+        self.username='username'
+        self.listname='Site'
+        #self.sitename='Sites'
+        self.descname='description'
+        self.urlname='address'
         self.read(self.configfilename)
         self.sections()
 
@@ -142,15 +73,23 @@ class ScraperConfig(configparser.ConfigParser):
         self[self.sectionname][self.username]=username
 
     def setsites(self,sitearray):
-        self[self.listname]={}
         for i in range(0,len(sitearray),1):
-            self[self.listname][self.sitename + str(i)]=sitearray[i]
+            self[self.listname + str(i)]={}
+            self[self.listname + str(i)][self.descname]=sitearray[i][0]
+            self[self.listname + str(i)][self.urlname]=sitearray[i][1]
     
     def getsites(self):
         sitearray=[]
-        if self.listname in self:
-            for key, path in self.items(self.listname):
-                sitearray.append(path)
+        i=0
+        while self.listname + str(i) in self:
+            data=[]
+            for key,path in self.items(self.listname + str(i)):
+                if key == self.descname:
+                    desc=path
+                if key == self.urlname:
+                    url=path
+            sitearray.append([desc,url])
+            i+=1
         return sitearray
     
     def save(self):
@@ -169,10 +108,10 @@ class App(tk.Tk):
 
         def menuAdd_click():
             #newsite=NewSiteWindow(self).show()
-            data = [['Paste site URL:','']]
+            data = [['Add a description:',''],['Paste site URL:','']]
             newsite=MultiPromptWindow(self,'Add new site', data).show()
-            if newsite[0] != '':
-                self.sitearray.append(newsite[0])
+            if newsite[0] != '' and newsite[1] != '':
+                self.sitearray.append(newsite)
                 self.scraperconfig.setsites(self.sitearray)
                 self.scraperconfig.save()
             
@@ -219,8 +158,10 @@ class App(tk.Tk):
         tree.heading('Item', text = 'Item')
         tree.heading('Link', text = 'Link')
 
-        tree.insert('', tk.END, values=('Item 1', 'Link 1'))
-        tree.insert('', tk.END, values=('Item 2', 'Link 2'))
+        for site in self.sitearray:
+            tree.insert('', tk.END, values=(site[0], site[1]))
+        #tree.insert('', tk.END, values=('Item 1', 'Link 1'))
+        #tree.insert('', tk.END, values=('Item 2', 'Link 2'))
         tree.grid(row=0, column=0, sticky='w')
 
 if __name__ == "__main__":
