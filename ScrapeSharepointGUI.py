@@ -123,7 +123,6 @@ class App(tk.Tk):
         self.username=self.scraperconfig.getusername()
         self.password=''
         self.sitearray=self.scraperconfig.getsites()
-        self.downloadthreads=[]
 
         def menuAdd_click():
             #newsite=NewSiteWindow(self).show()
@@ -147,38 +146,22 @@ class App(tk.Tk):
             for child in tree.get_children():
                 print('-- ', tree.item(child)['values'][0], ' - ', tree.item(child)['values'][1])
                 #for each link, create a scraper object and return the folder object
-                #scraper = Scraper(self.username, self.password, tree.item(child)['values'][1])
-                #rootfolder = scraper.getRootFolder()
-                downloadThread = threading.Thread(target=multithreadDownload, args=(tree.item(child)['values'][1], child))
-                self.downloadthreads.append(downloadThread)
-                downloadThread.start()
-                #enum_folder(rootfolder, child)
-            for downloadThread in self.downloadthreads:
-                print('Joining')
-                downloadThread.join()
-
-        def multithreadDownload(childlink, childid):
-            print('Starting thread for ', childid)
-            scraper = Scraper(self.username, self.password, childlink)
-            rootfolder = scraper.getRootFolder()
-            enum_folder(rootfolder,childid)
+                scraper = Scraper(self.username, self.password, tree.item(child)['values'][1])
+                rootfolder = scraper.getRootFolder()
+                enum_folder(rootfolder, child)
+                tree.item(child, open=False)
 
         def enum_folder(parentfolder, parenttree):
-            print('Enumerating ', parenttree)
             parentfolder.expand(["Files", "Folders"]).get().execute_query()
-            #tree.item(parenttree, open=True)
+            tree.item(parenttree, open=True)
             for file in parentfolder.files:  # type: File
                 print(file.properties['ServerRelativeUrl'])
             for folder in parentfolder.folders:  # type: Folder
                 newtreeitem = addToTree(parenttree, folder)
-                #downloadThread = threading.Thread(target=enum_folder, args=(folder, newtreeitem))
-                #self.downloadthreads.append(downloadThread)
-                #downloadThread.start()
                 enum_folder(folder, newtreeitem)
         
         def addToTree(parenttree, folder):
             newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=(folder.name,folder.serverRelativeUrl))
-            #tree.move(newtreeitem, parenttree, tk.END)
             return newtreeitem
 
         def menuDebug_click():
