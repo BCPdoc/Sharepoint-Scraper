@@ -5,23 +5,27 @@
 # https://www.pythontutorial.net/tkinter/tkinter-toplevel/
 # https://stackoverflow.com/questions/45171328/grab-set-in-tkinter-window
 # https://docs.python.org/3/library/configparser.html
+# https://www.plus2net.com/python/tkinter-treeview.php
 
 import tkinter as tk
 from tkinter import ttk
 import sys
 import configparser
+from office365.sharepoint.client_context import ClientContext
+from office365.runtime.auth.user_credential import UserCredential
+import threading
 
 class MultiPromptWindow(object):
     def __init__(self, parent, title, data):
         self.toplevel=tk.Toplevel(parent)
         self.toplevel.title(title)
-        self.count=0
         self.answers=[]
         self.frame=tk.Frame(self.toplevel)
         self.frame.pack(expand=True)
         self.labels=[]
         self.entries=[]
 
+        self.count=0
         for prompt, value in data:
             self.answers.append(value)
 
@@ -33,6 +37,8 @@ class MultiPromptWindow(object):
             newentry.insert(0, value)
             newentry.grid(row=self.count, column=1, sticky="w")
             self.entries.append(newentry)
+            if self.count == 0:
+                newentry.focus()
 
             self.count+=1
         
@@ -96,6 +102,18 @@ class ScraperConfig(configparser.ConfigParser):
         with open(self.configfilename, 'w') as configfile:
             self.write(configfile)
 
+class Scraper(object):
+    def __init__(self, username, password, site):
+        
+        credentials = UserCredential(username, password)
+        self.ctx = ClientContext(site).with_credentials(credentials)
+
+    def getRootFolder(self):
+        target_folder_url = "Shared Documents"
+        root_folder = self.ctx.web.get_folder_by_server_relative_path(target_folder_url)
+        return root_folder
+
+    
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -105,6 +123,7 @@ class App(tk.Tk):
         self.username=self.scraperconfig.getusername()
         self.password=''
         self.sitearray=self.scraperconfig.getsites()
+        self.downloadthreads=[]
 
         def menuAdd_click():
             #newsite=NewSiteWindow(self).show()
@@ -121,6 +140,46 @@ class App(tk.Tk):
             self.username, self.password = MultiPromptWindow(self, 'This is the title',data).show()
             self.scraperconfig.setusername(self.username)
             self.scraperconfig.save()
+            processTree()
+
+        def processTree():
+            #for each tree item, get the link
+            for child in tree.get_children():
+                print('-- ', tree.item(child)['values'][0], ' - ', tree.item(child)['values'][1])
+                #for each link, create a scraper object and return the folder object
+                #scraper = Scraper(self.username, self.password, tree.item(child)['values'][1])
+                #rootfolder = scraper.getRootFolder()
+                downloadThread = threading.Thread(target=multithreadDownload, args=(tree.item(child)['values'][1], child))
+                self.downloadthreads.append(downloadThread)
+                downloadThread.start()
+                #enum_folder(rootfolder, child)
+            for downloadThread in self.downloadthreads:
+                print('Joining')
+                downloadThread.join()
+
+        def multithreadDownload(childlink, childid):
+            print('Starting thread for ', childid)
+            scraper = Scraper(self.username, self.password, childlink)
+            rootfolder = scraper.getRootFolder()
+            enum_folder(rootfolder,childid)
+
+        def enum_folder(parentfolder, parenttree):
+            print('Enumerating ', parenttree)
+            parentfolder.expand(["Files", "Folders"]).get().execute_query()
+            #tree.item(parenttree, open=True)
+            for file in parentfolder.files:  # type: File
+                print(file.properties['ServerRelativeUrl'])
+            for folder in parentfolder.folders:  # type: Folder
+                newtreeitem = addToTree(parenttree, folder)
+                #downloadThread = threading.Thread(target=enum_folder, args=(folder, newtreeitem))
+                #self.downloadthreads.append(downloadThread)
+                #downloadThread.start()
+                enum_folder(folder, newtreeitem)
+        
+        def addToTree(parenttree, folder):
+            newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=(folder.name,folder.serverRelativeUrl))
+            #tree.move(newtreeitem, parenttree, tk.END)
+            return newtreeitem
 
         def menuDebug_click():
             #data= [['First prompt', 'First answer'], ['Second prompt','']]
@@ -133,6 +192,8 @@ class App(tk.Tk):
             print('Sites: ')
             for site in self.sitearray:
                 print('-- ', site)
+            print('Tree items:')
+            processTree()
 
         def menuExit_click():
             sys.exit(0)
@@ -154,12 +215,12 @@ class App(tk.Tk):
 
         # Add treeview
         columns = ('Item', 'Link')
-        tree = ttk.Treeview(self, columns=columns, show='headings')
+        tree = ttk.Treeview(self, columns=columns) #, show='headings')
         tree.heading('Item', text = 'Item')
         tree.heading('Link', text = 'Link')
 
         for site in self.sitearray:
-            tree.insert('', tk.END, values=(site[0], site[1]))
+            tree.insert('', tk.END, values=(site[0], site[1]), open=True)
         #tree.insert('', tk.END, values=('Item 1', 'Link 1'))
         #tree.insert('', tk.END, values=('Item 2', 'Link 2'))
         tree.grid(row=0, column=0, sticky='w')
