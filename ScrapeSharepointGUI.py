@@ -8,6 +8,7 @@
 # https://www.plus2net.com/python/tkinter-treeview.php
 # https://stackoverflow.com/questions/1966929/tk-treeview-column-sort
 # https://stackoverflow.com/questions/12043942/python-tkinter-treeview-right-click-button-3-event-to-select-item-in-treeview
+# https://icons8.com/icons/set/folder
 
 import tkinter as tk
 from tkinter import ttk
@@ -125,6 +126,9 @@ class App(tk.Tk):
         self.username=self.scraperconfig.getusername()
         self.password=''
         self.sitearray=self.scraperconfig.getsites()
+        self.imageproject = tk.PhotoImage(file="project.png")
+        self.imagefile = tk.PhotoImage(file="file.png")
+        self.imagefolder = tk.PhotoImage(file="folder.png")
 
         def menuAdd_click():
             #newsite=NewSiteWindow(self).show()
@@ -146,9 +150,9 @@ class App(tk.Tk):
         def processTree():
             #for each tree item, get the link
             for child in tree.get_children():
-                print('-- ', tree.item(child)['values'][0], ' - ', tree.item(child)['values'][1])
+                print('-- ', tree.item(child)['text'], ' - ', tree.item(child)['values'][0])
                 #for each link, create a scraper object and return the folder object
-                scraper = Scraper(self.username, self.password, tree.item(child)['values'][1])
+                scraper = Scraper(self.username, self.password, tree.item(child)['values'][0])
                 rootfolder = scraper.getRootFolder()
                 enum_folder(rootfolder, child)
                 tree.item(child, open=False)
@@ -161,23 +165,29 @@ class App(tk.Tk):
             sortedarray=[]
             for file in parentfolder.files:  # type: File
                 sortedarray.append([file.name, file.serverRelativeUrl])
-            #sortedarray.sort()
+            sortedarray.sort()
 
             for item in sortedarray:
                 #print(item[0])
-                addToTree(parenttree, item)
+                addToTree(parenttree, item, 'File')
             
             sortedarray=[]
             for folder in parentfolder.folders:  # type: Folder
                 sortedarray.append( [folder.name, folder.serverRelativeUrl, folder] ) 
-            #sortedarray.sort()
+            sortedarray.sort()
 
             for item in sortedarray:
-                newtreeitem = addToTree(parenttree, item)
+                newtreeitem = addToTree(parenttree, item, 'Folder')
                 enum_folder(item[2], newtreeitem)
         
-        def addToTree(parenttree, folder):
-            newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=(folder[0],folder[1]))
+        def addToTree(parenttree, folder, type):
+            match type:
+                case 'File':
+                    imagefile = self.imagefile
+                case 'Folder':
+                    imagefile = self.imagefolder
+
+            newtreeitem = tree.insert(parent=parenttree, index=tk.END, text=folder[0], values=(folder[1],type), image=imagefile)
             return newtreeitem
 
         def menuDebug_click():
@@ -186,9 +196,10 @@ class App(tk.Tk):
             #recalcMinwidthFor0()
 
         def addRandomToTree(parenttree, number):
+            image=[self.imagefile,self.imagefolder]
             if number>0:
                 for i in range(number):
-                    newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=number)
+                    newtreeitem = tree.insert(parent=parenttree, index=tk.END, text=number, image=image[i%2])
                     addRandomToTree(newtreeitem,number-1)
 
 
@@ -198,6 +209,9 @@ class App(tk.Tk):
         mainWindowSize='600x600'
         self.geometry(mainWindowSize)
         self.title('Sharepoint Scraper')
+        self.grid()
+        self.grid_columnconfigure(0,weight=1)
+        self.grid_rowconfigure(0,weight=1)
 
         # Add menu
         menubar = tk.Menu(self)
@@ -226,24 +240,42 @@ class App(tk.Tk):
             # reverse sort next time
             tv.heading(col, command=lambda: treeview_sort_column(tv, col, not reverse))
 
-        columns = ('Item', 'Link')
+        columns = ('Link', 'Type')
         tree = ttk.Treeview(self, columns=columns) #, show='tree') #, show='headings')
         #tree.heading('Item', text = 'Item')
         #tree.heading('Link', text = 'Link')
         for col in columns:
             tree.heading(col, text=col, command=lambda: \
                      treeview_sort_column(tree, col, False))
-        tree.column("#0", width=60)
         
-        tree.popup = tk.Menu(self, tearoff=0)
-        tree.popup.add_command(label="Shutdown") # , command=next) etc...
-        tree.popup.add_command(label="Edit Name")
-        tree.popup.add_separator()
-        tree.popup.add_command(label="Exit" ) #, command=lambda: self.closeWindow())
+        tree.column("#0", stretch=True)
+        tree.column("#1", width=50, stretch=False)
+        tree.column("#2", width=50, stretch=False)
+        
+        tree.popupfile = tk.Menu(self, tearoff=0)
+        tree.popupfile.add_command(label="Download and open (overwrite)") # , command=next) etc...
+        tree.popupfile.add_command(label="Explore to...")
+        tree.popupfile.add_command(label="Browse to...")
+
+        tree.popupfolder = tk.Menu(self, tearoff=0)
+        tree.popupfolder.add_command(label="Refresh folder")
+        tree.popupfolder.add_command(label="Download folder (overwrite)")
+
+        tree.popupproject = tk.Menu(self, tearoff=0)
+        tree.popupproject.add_command(label="Refresh project")
+        tree.popupproject.add_command(label="Delete")
 
         def do_popup(event):
             item = tree.identify_row(event.y)
             print('clicked item:', item)
+            match tree.item(item)['values'][1]:
+                case 'File':
+                    tree.popup=tree.popupfile
+                case 'Folder':
+                    tree.popup=tree.popupfolder
+                case 'Project':
+                    tree.popup=tree.popupproject
+
             try:
                 tree.popup.tk_popup(event.x_root, event.y_root, 0)
             finally:
@@ -254,8 +286,8 @@ class App(tk.Tk):
 
         #add projects that were loaded from config file
         for site in self.sitearray:
-            tree.insert('', tk.END, values=(site[0], site[1]), open=True)
-        tree.grid(row=0, column=0, sticky='w')#the minimum width default that Tk assigns
+            tree.insert('', tk.END, text=site[0], values=( site[1], 'Project'), image=self.imageproject)
+        tree.grid(row=0, column=0, sticky='nsew')#the minimum width default that Tk assigns
         
 
 if __name__ == "__main__":
