@@ -6,6 +6,8 @@
 # https://stackoverflow.com/questions/45171328/grab-set-in-tkinter-window
 # https://docs.python.org/3/library/configparser.html
 # https://www.plus2net.com/python/tkinter-treeview.php
+# https://stackoverflow.com/questions/1966929/tk-treeview-column-sort
+# https://stackoverflow.com/questions/12043942/python-tkinter-treeview-right-click-button-3-event-to-select-item-in-treeview
 
 import tkinter as tk
 from tkinter import ttk
@@ -13,7 +15,7 @@ import sys
 import configparser
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.user_credential import UserCredential
-import threading
+import random
 
 class MultiPromptWindow(object):
     def __init__(self, parent, title, data):
@@ -150,33 +152,45 @@ class App(tk.Tk):
                 rootfolder = scraper.getRootFolder()
                 enum_folder(rootfolder, child)
                 tree.item(child, open=False)
+            #recalcMinwidthFor0()
 
         def enum_folder(parentfolder, parenttree):
             parentfolder.expand(["Files", "Folders"]).get().execute_query()
-            tree.item(parenttree, open=True)
+            tree.item(parenttree, open=False)
+
+            sortedarray=[]
             for file in parentfolder.files:  # type: File
-                print(file.properties['ServerRelativeUrl'])
+                sortedarray.append([file.name, file.serverRelativeUrl])
+            #sortedarray.sort()
+
+            for item in sortedarray:
+                #print(item[0])
+                addToTree(parenttree, item)
+            
+            sortedarray=[]
             for folder in parentfolder.folders:  # type: Folder
-                newtreeitem = addToTree(parenttree, folder)
-                enum_folder(folder, newtreeitem)
+                sortedarray.append( [folder.name, folder.serverRelativeUrl, folder] ) 
+            #sortedarray.sort()
+
+            for item in sortedarray:
+                newtreeitem = addToTree(parenttree, item)
+                enum_folder(item[2], newtreeitem)
         
         def addToTree(parenttree, folder):
-            newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=(folder.name,folder.serverRelativeUrl))
+            newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=(folder[0],folder[1]))
             return newtreeitem
 
         def menuDebug_click():
-            #data= [['First prompt', 'First answer'], ['Second prompt','']]
-            #answers = MultiPromptWindow(self, 'This is the title',data).show()
-            #print ('Returned these answers:')
-            #for answer in answers:
-            #    print (answer)
-            print('Username: ', self.username)
-            print('Password: ', self.password)
-            print('Sites: ')
-            for site in self.sitearray:
-                print('-- ', site)
-            print('Tree items:')
-            processTree()
+            for child in tree.get_children():
+                addRandomToTree(child,3)
+            #recalcMinwidthFor0()
+
+        def addRandomToTree(parenttree, number):
+            if number>0:
+                for i in range(number):
+                    newtreeitem = tree.insert(parent=parenttree, index=tk.END, values=number)
+                    addRandomToTree(newtreeitem,number-1)
+
 
         def menuExit_click():
             sys.exit(0)
@@ -187,6 +201,10 @@ class App(tk.Tk):
 
         # Add menu
         menubar = tk.Menu(self)
+        treeviewindent = 10
+        style = ttk.Style(self)
+        style.configure('Treeview', indent=treeviewindent)
+
         filemenu = tk.Menu(menubar, tearoff=0)
         filemenu.add_command(label="Login", command=menuLogin_click)
         filemenu.add_command(label="Add project", command=menuAdd_click)
@@ -197,16 +215,48 @@ class App(tk.Tk):
         self.config(menu=menubar)
 
         # Add treeview
-        columns = ('Item', 'Link')
-        tree = ttk.Treeview(self, columns=columns) #, show='headings')
-        tree.heading('Item', text = 'Item')
-        tree.heading('Link', text = 'Link')
+        def treeview_sort_column(tv, col, reverse):
+            l = [(tv.set(k, col), k) for k in tv.get_children('')]
+            l.sort(reverse=reverse)
 
+            # rearrange items in sorted positions
+            for index, (val, k) in enumerate(l):
+                tv.move(k, '', index)
+
+            # reverse sort next time
+            tv.heading(col, command=lambda: treeview_sort_column(tv, col, not reverse))
+
+        columns = ('Item', 'Link')
+        tree = ttk.Treeview(self, columns=columns) #, show='tree') #, show='headings')
+        #tree.heading('Item', text = 'Item')
+        #tree.heading('Link', text = 'Link')
+        for col in columns:
+            tree.heading(col, text=col, command=lambda: \
+                     treeview_sort_column(tree, col, False))
+        tree.column("#0", width=60)
+        
+        tree.popup = tk.Menu(self, tearoff=0)
+        tree.popup.add_command(label="Shutdown") # , command=next) etc...
+        tree.popup.add_command(label="Edit Name")
+        tree.popup.add_separator()
+        tree.popup.add_command(label="Exit" ) #, command=lambda: self.closeWindow())
+
+        def do_popup(event):
+            item = tree.identify_row(event.y)
+            print('clicked item:', item)
+            try:
+                tree.popup.tk_popup(event.x_root, event.y_root, 0)
+            finally:
+                tree.popup.grab_release()
+
+        # Button-3 is right click on windows
+        tree.bind("<Button-3>", do_popup)
+
+        #add projects that were loaded from config file
         for site in self.sitearray:
             tree.insert('', tk.END, values=(site[0], site[1]), open=True)
-        #tree.insert('', tk.END, values=('Item 1', 'Link 1'))
-        #tree.insert('', tk.END, values=('Item 2', 'Link 2'))
-        tree.grid(row=0, column=0, sticky='w')
+        tree.grid(row=0, column=0, sticky='w')#the minimum width default that Tk assigns
+        
 
 if __name__ == "__main__":
     app = App()
