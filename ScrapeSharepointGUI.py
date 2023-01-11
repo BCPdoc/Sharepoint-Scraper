@@ -1,3 +1,4 @@
+# https://github.com/vgrem/Office365-REST-Python-Client/blob/master/examples/sharepoint
 # https://www.youtube.com/playlist?list=PL0MxHK9qnVo4koZLFrOsNuEEZixV1_JAu
 # https://www.pythontutorial.net/tkinter/tkinter-treeview/#:~:text=Introduction%20to%20the%20Tkinter%20Treeview,has%20one%20or%20more%20columns.
 # https://www.tutorialspoint.com/python/tk_menu.htm
@@ -16,7 +17,9 @@ import sys
 import configparser
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.user_credential import UserCredential
-import random
+import os
+from pathlib import Path
+import tempfile
 
 class MultiPromptWindow(object):
     def __init__(self, parent, title, data):
@@ -57,6 +60,26 @@ class MultiPromptWindow(object):
         self.toplevel.grab_set()
         self.toplevel.wait_window()
         return self.answers
+
+class MessageWindow(object):
+    def __init__(self, parent, title, message):
+        self.toplevel=tk.Toplevel(parent)
+        self.toplevel.title(title)
+        self.frame=tk.Frame(self.toplevel)
+        self.frame.pack(expand=True)
+
+        
+        def btnOK_click():
+            self.toplevel.destroy()
+
+        msg = ttk.Label(self.frame, text=message)
+        msg.grid(row=0, column=0, columnspan=2, sticky='nsew')
+        btnOK = ttk.Button(self.frame, text="OK", command=btnOK_click)
+        btnOK.grid(row=1, column=0, columnspan=2, sticky='nsew')
+
+    def show(self):
+        self.toplevel.grab_set()
+        self.toplevel.wait_window()
 
 class ScraperConfig(configparser.ConfigParser):
     def __init__(self):
@@ -116,6 +139,9 @@ class Scraper(object):
         root_folder = self.ctx.web.get_folder_by_server_relative_path(target_folder_url)
         return root_folder
 
+    def getctx(self):
+        return self.ctx
+
     
 class App(tk.Tk):
     def __init__(self):
@@ -140,12 +166,15 @@ class App(tk.Tk):
                 self.scraperconfig.save()
             
         def menuLogin_click():
+            self.config(cursor="wait")
+            self.update()
             #self.username,self.password = CredentialWindow(self, self.username, self.password).show()
             data= [['Username:', self.username], ['Password:',self.password]]
-            self.username, self.password = MultiPromptWindow(self, 'This is the title',data).show()
+            self.username, self.password = MultiPromptWindow(self, 'Please provide credentials for Sharepoint',data).show()
             self.scraperconfig.setusername(self.username)
             self.scraperconfig.save()
             processTree()
+            self.config(cursor="")
 
         def processTree():
             #for each tree item, get the link
@@ -252,21 +281,78 @@ class App(tk.Tk):
         tree.column("#1", width=50, stretch=False)
         tree.column("#2", width=50, stretch=False)
         
+        #right-click popup menus
+        def featureDoesNotExist():
+            MessageWindow(self, 'Not yet implemented','Sorry, this feature is not yet implemented').show()
+        def findParentOnTree(item):
+            parent = tree.parent(item)
+            while tree.parent(parent) != '':
+                parent = tree.parent(parent)
+            return parent
+
+        def getNewPath(item):
+            #item = tree.selection()
+            link=tree.item(item)['values'][0]
+            """print(link)
+            print('01234567890123456789012345678901234567890123456789')
+            print(link[5:])
+            print(link[:-5])"""
+            parent = findParentOnTree(item)
+            findme='Shared Documents'
+            location = link.find(findme)
+            trimfromleft=location+len(findme)
+            link = link[trimfromleft:]
+            if tree.item(item)['values'][1] == 'File' :
+                findme='/'
+                location = link.rfind(findme)
+                trimfromright=len(link)-location-1
+                link=link[:-trimfromright]
+            project = tree.item(parent)['text']
+            link = project + "/" + link
+            return link
+
+        def createDirectories(newpath):
+            Path(newpath).mkdir(parents=True, exist_ok=True)
+
+        def downloadFile(child, download_path):
+            parent = findParentOnTree(child)
+            ctx = Scraper(self.username, self.password, tree.item(parent)['values'][0]).getctx()
+            #download_path = Path.replace(os.sep, '/')
+            download_path = download_path.replace('/', '\\')
+            download_path = os.path.join(os.getcwd(), download_path)
+            download_path = download_path.replace('\\\\', '\\')
+            download_path = download_path.replace('\\\\', '\\')
+            download_path = download_path.replace('\\\\', '\\')
+            download_path = download_path.replace('\\', '/')
+            download_path = os.path.join(download_path, tree.item(child)['text'])
+            with open(download_path, "wb") as local_file:
+                file_url = tree.item(child)['values'][0]
+                file = ctx.web.get_file_by_server_relative_url(file_url).download(local_file).execute_query()
+            os.startfile(download_path)
+
+        def downloadAndOpenFile():
+            item = tree.selection()
+            newpath = getNewPath(item)
+            createDirectories(newpath)
+            downloadFile(item, newpath)
+            
+
         tree.popupfile = tk.Menu(self, tearoff=0)
-        tree.popupfile.add_command(label="Download and open (overwrite)") # , command=next) etc...
-        tree.popupfile.add_command(label="Explore to...")
-        tree.popupfile.add_command(label="Browse to...")
+        tree.popupfile.add_command(label="Download and open (overwrite)", command=downloadAndOpenFile) # , command=next) etc...
+        tree.popupfile.add_command(label="Explore to...", command=featureDoesNotExist)
+        tree.popupfile.add_command(label="Browse to...", command=featureDoesNotExist)
 
         tree.popupfolder = tk.Menu(self, tearoff=0)
-        tree.popupfolder.add_command(label="Refresh folder")
-        tree.popupfolder.add_command(label="Download folder (overwrite)")
+        tree.popupfolder.add_command(label="Refresh folder", command=featureDoesNotExist)
+        tree.popupfolder.add_command(label="Download folder (overwrite)", command=createDirectories)
 
         tree.popupproject = tk.Menu(self, tearoff=0)
-        tree.popupproject.add_command(label="Refresh project")
-        tree.popupproject.add_command(label="Delete")
+        tree.popupproject.add_command(label="Refresh project", command=featureDoesNotExist)
+        tree.popupproject.add_command(label="Delete", command=featureDoesNotExist)
 
         def do_popup(event):
             item = tree.identify_row(event.y)
+            tree.selection_set(item)
             print('clicked item:', item)
             match tree.item(item)['values'][1]:
                 case 'File':
