@@ -196,7 +196,7 @@ class App(tk.Tk):
             self.scraperconfig.save()
             processTree()
             self.config(cursor="")
- 
+            
         def processTree():
             #for each tree item, get the link
             for child in tree.get_children():
