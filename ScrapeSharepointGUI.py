@@ -105,6 +105,12 @@ class ScraperConfig(configparser.ConfigParser):
         self[self.sectionname][self.username]=username
 
     def setsites(self,sitearray):
+        try:
+            for i in range(0,len(self)):
+                self.remove_section(self.listname + str(i))
+        except:
+            print('Ran out of items to delete')
+
         for i in range(0,len(sitearray),1):
             self[self.listname + str(i)]={}
             self[self.listname + str(i)][self.descname]=sitearray[i][0]
@@ -114,7 +120,6 @@ class ScraperConfig(configparser.ConfigParser):
         sitearray=[]
         i=0
         while self.listname + str(i) in self:
-            data=[]
             for key,path in self.items(self.listname + str(i)):
                 if key == self.descname:
                     desc=path
@@ -164,7 +169,23 @@ class App(tk.Tk):
                 self.sitearray.append(newsite)
                 self.scraperconfig.setsites(self.sitearray)
                 self.scraperconfig.save()
-            
+                
+            tree.insert('', tk.END, text=newsite[0], values=( newsite[1], 'Project'), image=self.imageproject)
+
+        def refreshSiteArrayFromTree():
+            self.sitearray=[]
+            for item in tree.get_children():
+                if tree.parent(item)=='':
+                    newsite=[tree.item(item)['text'], tree.item(item)['values'][0]]
+                    self.sitearray.append(newsite)
+
+        def deleteProject():
+            item=tree.selection()
+            tree.delete(item)
+            refreshSiteArrayFromTree()
+            self.scraperconfig.setsites(self.sitearray)
+            self.scraperconfig.save()
+
         def menuLogin_click():
             self.config(cursor="wait")
             self.update()
@@ -348,7 +369,7 @@ class App(tk.Tk):
 
         tree.popupproject = tk.Menu(self, tearoff=0)
         tree.popupproject.add_command(label="Refresh project", command=featureDoesNotExist)
-        tree.popupproject.add_command(label="Delete", command=featureDoesNotExist)
+        tree.popupproject.add_command(label="Delete", command=deleteProject)
 
         def do_popup(event):
             item = tree.identify_row(event.y)
