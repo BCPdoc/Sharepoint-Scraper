@@ -185,7 +185,7 @@ class App(tk.Tk):
             refreshSiteArrayFromTree()
             self.scraperconfig.setsites(self.sitearray)
             self.scraperconfig.save()
-
+            
         def menuLogin_click():
             self.config(cursor="wait")
             self.update()
